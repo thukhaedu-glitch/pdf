@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Edit multi-page PDFs in your browser. Add photos and text, arrange them visually, and export the finished PDF." />
+  <title>PDF Canvas Editor</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231b4dff'/%3E%3Cpath d='M18 12h20l10 10v30H18z' fill='white'/%3E%3Cpath d='M38 12v12h12' fill='none' stroke='%231b4dff' stroke-width='5'/%3E%3Cpath d='M24 35h18M24 43h13' stroke='%231b4dff' stroke-width='4' stroke-linecap='round'/%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <input id="pdfInput" type="file" accept="application/pdf" hidden />
+  <input id="imageInput" type="file" accept="image/png,image/jpeg,image/webp" hidden />
+  <input id="compressInput" type="file" accept="application/pdf" hidden />
+  <input id="mergeInput" type="file" accept="application/pdf" multiple hidden />
+  <input id="splitInput" type="file" accept="application/pdf" hidden />
+  <input id="createInput" type="file" accept="application/pdf,.docx,.xlsx,.xls,.csv,image/png,image/jpeg,image/webp" multiple hidden />
+  <input id="ocrInput" type="file" accept="application/pdf,image/png,image/jpeg,image/webp" hidden />
+
+  <header class="topbar">
+    <div class="brand"><span class="brand-mark">P</span><span>PDF Canvas</span></div>
+    <div class="document-name" id="documentName">Untitled document</div>
+    <div class="top-actions" id="editorTopActions">
+      <button class="icon-btn" id="undoBtn" title="Undo" disabled aria-label="Undo">↶</button>
+      <button class="icon-btn" id="redoBtn" title="Redo" disabled aria-label="Redo">↷</button>
+      <button class="secondary" id="openPdfBtn">Open PDF</button>
+      <button class="primary" id="exportBtn" disabled>Export PDF</button>
+    </div>
+  </header>
+
+  <nav class="mode-tabs" aria-label="PDF tools">
+    <button class="mode-tab active" data-mode="editor">✦ PDF Editor</button>
+    <button class="mode-tab" data-mode="compress">⇲ Compress</button>
+    <button class="mode-tab" data-mode="merge">⊕ Merge</button>
+    <button class="mode-tab" data-mode="split">✂ Split</button>
+    <button class="mode-tab" data-mode="create">＋ Create PDF</button>
+    <button class="mode-tab" data-mode="ocr">⌕ Scan to Text</button>
+  </nav>
+
+  <main class="app-shell tool-view" id="editorView">
+    <aside class="left-panel">
+      <div class="panel-title-row"><h2>Pages</h2><span id="pageCount">0</span></div>
+      <div class="page-list" id="pageList"></div>
+      <button class="add-pdf" id="replacePdfBtn">＋ Add / replace PDF</button>
+    </aside>
+
+    <section class="workspace">
+      <div class="workspace-toolbar">
+        <div class="tool-group">
+          <button class="tool-button" id="addTextBtn" disabled><span class="tool-icon">T</span>Text</button>
+          <button class="tool-button" id="addImageBtn" disabled title="Upload a photo or paste a screenshot with Ctrl+V"><span class="tool-icon">▧</span>Photo</button>
+        </div>
+        <div class="zoom-controls">
+          <button id="zoomOutBtn" aria-label="Zoom out">−</button>
+          <span id="zoomLabel">100%</span>
+          <button id="zoomInBtn" aria-label="Zoom in">＋</button>
+          <button id="fitBtn">Fit</button>
+        </div>
+        <button class="tool-button" id="pageNumberBtn" disabled><span class="tool-icon">#</span>Page No.</button>
+      </div>
+
+      <div class="stage-wrap" id="stageWrap">
+        <div class="empty-state" id="emptyState">
+          <div class="empty-illustration"><span>PDF</span></div>
+          <h1>Edit your PDF visually</h1>
+          <p>Open a PDF, then place photos and text anywhere on every page.</p>
+          <button class="primary large" id="emptyOpenBtn">Choose a PDF</button>
+          <small>Your files stay in this browser while you edit.</small>
+        </div>
+        <div class="page-stage hidden" id="pageStage">
+          <canvas id="pdfCanvas"></canvas>
+          <div class="overlay-layer" id="overlayLayer"></div>
+        </div>
+      </div>
+
+      <div class="statusbar">
+        <span id="statusText">No PDF opened</span>
+        <span id="pageIndicator">Page —</span>
+      </div>
+    </section>
+
+    <aside class="right-panel">
+      <div class="properties-header"><h2>Properties</h2></div>
+      <div id="noSelection" class="no-selection">
+        <div class="selection-icon">↖</div>
+        <p>Select a text or photo layer to edit it.</p>
+      </div>
+      <div id="textProperties" class="properties hidden">
+        <label>Text<textarea id="textContent" rows="4"></textarea></label>
+        <div class="property-grid">
+          <label>Size<input id="fontSize" type="number" min="6" max="160" /></label>
+          <label>Color<input id="fontColor" type="color" /></label>
+        </div>
+        <label>Font<select id="fontFamily"><option value="Arial">Arial</option><option value="Georgia">Georgia</option><option value="Times New Roman">Times New Roman</option><option value="Courier New">Courier New</option></select></label>
+        <div class="style-row">
+          <button id="boldBtn"><b>B</b></button><button id="italicBtn"><i>I</i></button>
+          <button id="alignLeftBtn">≡</button><button id="alignCenterBtn">≡</button><button id="alignRightBtn">≡</button>
+        </div>
+      </div>
+      <div id="imageProperties" class="properties hidden">
+        <label>Opacity <span id="opacityValue">100%</span><input id="imageOpacity" type="range" min="10" max="100" value="100" /></label>
+        <label>Corner radius <span id="radiusValue">0 px</span><input id="imageRadius" type="range" min="0" max="80" value="0" /></label>
+        <button class="secondary full" id="replaceImageBtn">Replace photo</button>
+      </div>
+      <div id="layerActions" class="layer-actions hidden">
+        <button class="secondary full" id="duplicateBtn">Duplicate layer</button>
+        <button class="danger full" id="deleteBtn">Delete layer</button>
+        <p class="hint">Tip: use arrow keys to move precisely. Press Delete to remove.</p>
+      </div>
+    </aside>
+  </main>
+
+  <main class="utility-view tool-view hidden" id="compressView">
+    <section class="utility-card wide">
+      <div class="utility-icon">⇲</div><h1>Compress PDF</h1><p>Reduce PDF size directly in your browser.</p>
+      <button class="drop-zone" id="chooseCompressBtn"><b>Choose a PDF</b><span>or drag and drop it here</span></button>
+      <div class="file-chip hidden" id="compressFileChip"><span class="file-badge">PDF</span><div><b id="compressFileName"></b><small id="compressFileSize"></small></div><button id="clearCompressBtn">×</button></div>
+      <div class="utility-options hidden" id="compressOptions">
+        <label>Compression level<select id="compressionLevel"><option value="high">High quality · larger file</option><option value="medium" selected>Balanced · recommended</option><option value="low">Smallest size · lower quality</option></select></label>
+        <div class="info-note">Compression converts each page to an optimized image. Searchable text and clickable links will be flattened.</div>
+        <button class="primary utility-action" id="compressBtn">Compress & download</button>
+      </div>
+      <div class="result-card hidden" id="compressResult"><span>Compression complete</span><b id="compressSaving"></b></div>
+    </section>
+  </main>
+
+  <main class="utility-view tool-view hidden" id="mergeView">
+    <section class="utility-card wide">
+      <div class="utility-icon">⊕</div><h1>Merge PDFs</h1><p>Combine multiple PDF files in the order you choose.</p>
+      <button class="drop-zone" id="chooseMergeBtn"><b>Choose PDF files</b><span>Select two or more files</span></button>
+      <div class="merge-list" id="mergeList"></div>
+      <button class="primary utility-action hidden" id="mergeBtn">Merge & download PDF</button>
+    </section>
+  </main>
+
+  <main class="utility-view tool-view hidden" id="splitView">
+    <section class="utility-card">
+      <div class="utility-icon">✂</div><h1>Split PDF</h1><p>Extract selected pages or save every page separately.</p>
+      <button class="drop-zone" id="chooseSplitBtn"><b>Choose a PDF</b><span>Page count will be detected automatically</span></button>
+      <div class="file-chip hidden" id="splitFileChip"><span class="file-badge">PDF</span><div><b id="splitFileName"></b><small id="splitFileMeta"></small></div><button id="clearSplitBtn">×</button></div>
+      <div class="utility-options hidden" id="splitOptions">
+        <div class="page-picker-head"><div><b>Choose pages to keep</b><span id="splitSelectionCount"></span></div><div><button class="secondary" id="keepAllPagesBtn">Keep all</button><button class="secondary" id="removeAllPagesBtn">Remove all</button></div></div>
+        <div class="split-preview-grid" id="splitPreviewGrid"></div>
+        <label>Download method<select id="splitMethod"><option value="range">Combine kept pages into one PDF</option><option value="each">Kept pages as separate PDFs (.zip)</option></select></label>
+        <button class="primary utility-action" id="splitBtn">Split & download</button>
+      </div>
+    </section>
+  </main>
+
+  <main class="utility-view tool-view hidden" id="createView">
+    <section class="utility-card extra-wide">
+      <div class="utility-icon">＋</div><h1>Create PDF</h1><p>Turn PDFs, Word, Excel and photos into one organized PDF.</p>
+      <button class="drop-zone" id="chooseCreateBtn"><b>Add files</b><span>PDF · DOCX · XLSX/XLS/CSV · JPG/PNG/WebP</span></button>
+      <div class="create-head hidden" id="createHead"><div><b id="createPageCount">0 pages</b><span>Drag pages or use arrows to reorder</span></div><button class="secondary" id="clearCreateBtn">Clear all</button></div>
+      <div class="create-preview-grid" id="createPreviewGrid"></div>
+      <div class="create-footer hidden" id="createFooter"><label class="page-number-toggle"><input id="createPageNumbers" type="checkbox" checked /> Add page numbers</label><button class="primary" id="createPdfBtn">Create & download PDF</button></div>
+    </section>
+  </main>
+  <main class="utility-view tool-view hidden" id="ocrView">
+    <section class="utility-card wide">
+      <div class="utility-icon">⌕</div><h1>Scan to Text</h1><p>Extract editable text from scanned PDFs and photos.</p>
+      <button class="drop-zone" id="chooseOcrBtn"><b>Choose scanned PDF or photo</b><span>PDF · JPG · PNG · WebP</span></button>
+      <div class="utility-options hidden" id="ocrOptions">
+        <label>Recognition language<select id="ocrLanguage"><option value="eng">English</option><option value="mya+eng">Burmese + English</option></select></label>
+        <label>Output layout<select id="ocrLayout"><option value="columns">Preserve columns</option><option value="plain">Plain text</option></select></label>
+        <button class="primary utility-action" id="runOcrBtn">Extract text</button>
+      </div>
+      <div class="ocr-result hidden" id="ocrResult"><div class="ocr-result-head"><b>Clean editable document</b><span id="ocrStats"></span></div><div id="ocrText" class="ocr-document" contenteditable="true" spellcheck="true"></div><div class="ocr-actions"><button class="secondary" id="copyOcrBtn">Copy text</button><button class="secondary" id="downloadOcrBtn">Download .txt</button><button class="secondary" id="downloadOcrWordBtn">Download Word</button><button class="primary" id="downloadOcrPdfBtn">Download PDF</button></div></div>
+    </section>
+  </main>
+  <div id="documentRenderHost" class="document-render-host" aria-hidden="true"></div>
+
+  <div class="toast" id="toast" role="status"></div>
+  <div class="busy hidden" id="busy"><div class="spinner"></div><p id="busyText">Working…</p></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
